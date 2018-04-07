@@ -1,24 +1,19 @@
 package com.github.dapeng.client.netty;
 
-import com.github.dapeng.api.ContainerFactory;
 import com.github.dapeng.core.*;
-import com.github.dapeng.json.JsonSerializer;
 import com.github.dapeng.registry.ConfigKey;
 import com.github.dapeng.registry.LoadBalanceStrategy;
 import com.github.dapeng.registry.RuntimeInstance;
 import com.github.dapeng.registry.zookeeper.*;
 import com.github.dapeng.util.SoaSystemEnvProperties;
-import org.apache.zookeeper.Op;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.lang.reflect.Method;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
@@ -40,6 +35,8 @@ public class SoaConnectionPoolImpl implements SoaConnectionPool {
     private Map<String, WeakReference<ClientInfo>> clientInfos = new ConcurrentHashMap<>(16);
     private Map<WeakReference<ClientInfo>, String> clientInfoRefs = new ConcurrentHashMap<>(16);
     private final ReferenceQueue<ClientInfo> referenceQueue = new ReferenceQueue<>();
+    //缓存 idl信息
+    private final Map<String, CustomConfig> idlConfigs = new ConcurrentHashMap<>(16);
 
     Thread cleanThread = new Thread(() -> {
         while (true) {
@@ -264,26 +261,26 @@ public class SoaConnectionPoolImpl implements SoaConnectionPool {
      * @return
      */
     private long getTimeout(String service, String version, String method) {
-
         long maxTimeout = SoaSystemEnvProperties.SOA_MAX_TIMEOUT;
         long defaultTimeout = SoaSystemEnvProperties.SOA_DEFAULT_TIMEOUT;
 
-        Optional<Long> invocationTimeout = getInvocationTimeout();
         Optional<Long> envTimeout = SoaSystemEnvProperties.SOA_SERVICE_TIMEOUT.longValue() == 0 ?
                 Optional.empty() : Optional.of(SoaSystemEnvProperties.SOA_SERVICE_TIMEOUT.longValue());
 
-        Optional<Long> zkTimeout = getZkTimeout(service, version, method);
-        Optional<Long> idlTimeout = getIdlTimeout(service, version, method);
-
         Optional<Long> timeout;
-        if (invocationTimeout.isPresent()) {
-            timeout = invocationTimeout;
+
+        if (getInvocationTimeout().isPresent()) {
+            timeout = getInvocationTimeout();
+
         } else if (envTimeout.isPresent()) {
             timeout = envTimeout;
-        } else if (idlTimeout.isPresent()) {
-            timeout = idlTimeout;
-        } else if (zkTimeout.isPresent()) {
-            timeout = zkTimeout;
+
+        } else if (getIdlTimeout(service, version, method).isPresent()) {
+            timeout = getIdlTimeout(service, version, method);
+
+        } else if (getZkTimeout(service, version, method).isPresent()) {
+            timeout = getZkTimeout(service, version, method);
+
         } else {
             timeout = Optional.of(defaultTimeout);
         }
@@ -306,6 +303,40 @@ public class SoaConnectionPoolImpl implements SoaConnectionPool {
     private Optional<Long> getIdlTimeout(String serviceName, String version, String methodName) {
         Optional<Long> timeout = Optional.empty();
 
+        String idlKey = serviceName + "." + methodName;
+        CustomConfig customConfig = idlConfigs.get(idlKey);
+        if (customConfig != null) {
+            timeout = Optional.of(customConfig.timeout());
+        } else {
+            //fixme  如果根本没定义idl的配置，这里的逻辑每次都会走
+            try {
+                Class<?> aClass = this.getClass().getClassLoader().loadClass(serviceName);
+                boolean isClassAnnotation = aClass.isAnnotationPresent(CustomConfig.class);
+                /**
+                 * 过滤有 @CustomConfig 的方法
+                 */
+                Method[] serviceMethods = aClass.getDeclaredMethods();
+                List<Method> configMethod = Arrays.stream(serviceMethods)
+                        .filter(method -> method.equals(methodName))
+                        .filter(method -> method.isAnnotationPresent(CustomConfig.class))
+                        .collect(Collectors.toList());
+                //如果方法名相同，参数不同，即重载
+                if (configMethod.size() == 1) {
+                    CustomConfig methodConfig = configMethod.get(0).getAnnotation(CustomConfig.class);
+                    timeout = Optional.of(methodConfig.timeout());
+                    idlConfigs.put(idlKey, methodConfig);
+                } else if (isClassAnnotation) {
+                    CustomConfig classConfig = aClass.getAnnotation(CustomConfig.class);
+                    timeout = Optional.of(classConfig.timeout());
+                    idlConfigs.put(idlKey, classConfig);
+                }
+                return timeout;
+            } catch (ClassNotFoundException e) {
+                logger.error(e.getMessage(), e);
+            }
+        }
+        return timeout;
+
 //        Application application = ContainerFactory.getContainer().getApplication(new ProcessorKey(serviceName, version));
 //        if (application != null) {
 //            Optional<ServiceInfo> serviceInfo = application.getServiceInfo(serviceName, version);
@@ -325,7 +356,7 @@ public class SoaConnectionPoolImpl implements SoaConnectionPool {
 //                }
 //            }
 //        }
-        return timeout;
+//        return timeout;
     }
 
     /**
