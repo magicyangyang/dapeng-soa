@@ -320,7 +320,7 @@ class JavaGenerator extends CodeGenerator {
       import java.util.concurrent.Future;
       import java.util.ServiceLoader;
       import {service.namespace.substring(0, service.namespace.lastIndexOf(".")) + "." + service.name + "AsyncCodec.*"};
-      import {service.namespace + "." + service.name };
+      import {service.namespace+ "." + service.name }Async;
 
       /**
       {notice}
