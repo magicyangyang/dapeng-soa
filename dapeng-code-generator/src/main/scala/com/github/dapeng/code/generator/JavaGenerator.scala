@@ -209,7 +209,8 @@ class JavaGenerator extends CodeGenerator {
       import com.github.dapeng.org.apache.thrift.*;
       import java.util.ServiceLoader;
       import {service.namespace.substring(0, service.namespace.lastIndexOf(".")) + "." + service.name + "Codec.*"};
-      import {service.namespace.substring(0, service.namespace.lastIndexOf(".")) + ".service." + service.name };
+      import {service.namespace + "." + service.name };
+
 
       /**
       {notice}
@@ -319,7 +320,7 @@ class JavaGenerator extends CodeGenerator {
       import java.util.concurrent.Future;
       import java.util.ServiceLoader;
       import {service.namespace.substring(0, service.namespace.lastIndexOf(".")) + "." + service.name + "AsyncCodec.*"};
-      import {service.namespace.substring(0, service.namespace.lastIndexOf(".")) + ".service." + service.name }Async;
+      import {service.namespace + "." + service.name };
 
       /**
       {notice}
