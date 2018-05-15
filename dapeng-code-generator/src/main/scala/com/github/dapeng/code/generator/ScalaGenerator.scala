@@ -542,7 +542,7 @@ class ScalaGenerator extends CodeGenerator {
         * {service.doc}
         **/
         @Service(name ="{oriNamespace+"."+service.name}" , version = "{service.meta.version}")
-        @Processor(className = "{service.namespace.substring(0, service.namespace.lastIndexOf("service"))}{service.name}Codec$Processor")
+        @Processor(className = "{service.namespace.substring(0, service.namespace.lastIndexOf("."))}.{service.name}Codec$Processor")
         trait {service.name} <block>
         {
         toMethodArrayBuffer(service.methods).map { (method: Method) =>
@@ -583,7 +583,7 @@ class ScalaGenerator extends CodeGenerator {
       * {service.doc}
       **/
       @Service(name ="{oriNamespace+"."+service.name}" , version = "{service.meta.version}")
-      @Processor(className = "{service.namespace.substring(0, service.namespace.lastIndexOf("service"))}{service.name}AsyncCodec$Processor")
+      @Processor(className = "{service.namespace.substring(0, service.namespace.lastIndexOf("."))}.{service.name}AsyncCodec$Processor")
       trait {service.name}Async extends com.github.dapeng.core.definition.AsyncService <block>
       {
       toMethodArrayBuffer(service.methods).map { (method: Method) =>
